@@ -38,6 +38,29 @@ export const DishProvider: FC<DishProviderProps> = ({ children }) => {
     Record<number, UserSelection[]>
   >({});
 
+  // Load all user selections from localStorage
+  const loadAllUserSelections = (): Record<number, UserSelection[]> => {
+    const allSelections: Record<number, UserSelection[]> = {};
+
+    // Scan localStorage for all user selections
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("userSelections-")) {
+        try {
+          const userId = parseInt(key.split("-")[1]);
+          const selections = JSON.parse(localStorage.getItem(key) || "[]");
+          if (Array.isArray(selections)) {
+            allSelections[userId] = selections;
+          }
+        } catch (error) {
+          console.error(`Error parsing selections for key ${key}:`, error);
+        }
+      }
+    }
+
+    return allSelections;
+  };
+
   useEffect(() => {
     const loadDishes = async () => {
       try {
@@ -46,18 +69,7 @@ export const DishProvider: FC<DishProviderProps> = ({ children }) => {
         setDishes(dishData);
 
         // Load all user selections from localStorage
-        const allSelections: Record<number, UserSelection[]> = {};
-
-        // Scan localStorage for user selections
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith("userSelections-")) {
-            const userId = parseInt(key.split("-")[1]);
-            const selections = JSON.parse(localStorage.getItem(key) || "[]");
-            allSelections[userId] = selections;
-          }
-        }
-
+        const allSelections = loadAllUserSelections();
         setAllUserSelections(allSelections);
 
         // Retrieve current user's selections if logged in
@@ -66,10 +78,20 @@ export const DishProvider: FC<DishProviderProps> = ({ children }) => {
             `userSelections-${currentUser.id}`
           );
           if (savedSelections) {
-            setUserSelections(JSON.parse(savedSelections));
+            try {
+              const parsedSelections = JSON.parse(savedSelections);
+              setUserSelections(
+                Array.isArray(parsedSelections) ? parsedSelections : []
+              );
+            } catch (error) {
+              console.error("Error parsing current user selections:", error);
+              setUserSelections([]);
+            }
           } else {
             setUserSelections([]);
           }
+        } else {
+          setUserSelections([]);
         }
       } catch (err) {
         setError("Failed to load dishes. Please try again later.");
@@ -81,60 +103,6 @@ export const DishProvider: FC<DishProviderProps> = ({ children }) => {
 
     loadDishes();
   }, [currentUser]);
-
-  const updateSelection = (dishId: number, rank: number): void => {
-    if (!currentUser) return;
-
-    // Check if the dish is already in another rank
-    const existingAtRank = userSelections.find(
-      (selection) => selection.rank === rank
-    );
-
-    // Create a new array removing any previous selection of this dish
-    let updatedSelections = userSelections.filter(
-      (selection) => selection.dishId !== dishId
-    );
-
-    // If there was a dish in this rank already, remove its rank
-    if (existingAtRank && existingAtRank.dishId !== dishId) {
-      updatedSelections = updatedSelections.filter(
-        (selection) => selection.rank !== rank
-      );
-    }
-
-    // Add the new selection
-    updatedSelections.push({ dishId, rank });
-
-    // Update state
-    setUserSelections(updatedSelections);
-
-    // Update all selections state
-    const newAllSelections = {
-      ...allUserSelections,
-      [currentUser.id]: updatedSelections,
-    };
-    setAllUserSelections(newAllSelections);
-
-    // Save to localStorage
-    localStorage.setItem(
-      `userSelections-${currentUser.id}`,
-      JSON.stringify(updatedSelections)
-    );
-  };
-
-  const clearSelections = (): void => {
-    if (!currentUser) return;
-
-    setUserSelections([]);
-
-    // Update all selections state
-    const newAllSelections = { ...allUserSelections };
-    delete newAllSelections[currentUser.id];
-    setAllUserSelections(newAllSelections);
-
-    // Remove from localStorage
-    localStorage.removeItem(`userSelections-${currentUser.id}`);
-  };
 
   const calculatePoints = (rank: number): number => {
     switch (rank) {
@@ -149,43 +117,119 @@ export const DishProvider: FC<DishProviderProps> = ({ children }) => {
     }
   };
 
-  // Calculate results with points based on rankings from all users
-  const calculateResults = (): RankedDish[] => {
-    // Calculate total points for each dish from all users
-    const pointsMap = new Map<number, number>();
+  const updateSelection = (dishId: number, rank: number): void => {
+    if (!currentUser) return;
 
-    // Initialize points map with the dish's base points
+    // Get current user's selections
+    const currentSelections = [...userSelections];
+
+    // Remove any existing selection for this dish
+    let updatedSelections = currentSelections.filter(
+      (selection) => selection.dishId !== dishId
+    );
+
+    // Remove any existing selection for this rank
+    updatedSelections = updatedSelections.filter(
+      (selection) => selection.rank !== rank
+    );
+
+    // Add the new selection
+    updatedSelections.push({ dishId, rank });
+
+    // Update current user's selections
+    setUserSelections(updatedSelections);
+
+    // Update all selections state immediately
+    const newAllSelections = {
+      ...allUserSelections,
+      [currentUser.id]: updatedSelections,
+    };
+    setAllUserSelections(newAllSelections);
+
+    // Save to localStorage
+    localStorage.setItem(
+      `userSelections-${currentUser.id}`,
+      JSON.stringify(updatedSelections)
+    );
+
+    // Debug log to verify the update
+    console.log(
+      "Updated selections for user",
+      currentUser.id,
+      ":",
+      updatedSelections
+    );
+    console.log("All user selections:", newAllSelections);
+  };
+
+  const clearSelections = (): void => {
+    if (!currentUser) return;
+
+    // Clear current user's selections
+    setUserSelections([]);
+
+    // Update all selections state by removing current user's selections
+    const newAllSelections = { ...allUserSelections };
+    delete newAllSelections[currentUser.id];
+    setAllUserSelections(newAllSelections);
+
+    // Remove from localStorage
+    localStorage.removeItem(`userSelections-${currentUser.id}`);
+
+    console.log("Cleared selections for user", currentUser.id);
+    console.log("Remaining selections:", newAllSelections);
+  };
+
+  // Calculate results with points based on rankings from ALL users
+  const calculateResults = (): RankedDish[] => {
+    // Calculate total ranking points for each dish from all users
+    const rankingPointsMap = new Map<number, number>();
+
+    // Initialize with 0 ranking points
     dishes.forEach((dish) => {
-      pointsMap.set(dish.id, dish.Points || 0); // Use dish.points (from your data)
+      rankingPointsMap.set(dish.id, 0);
     });
 
-    // Add points from all users' rankings
-    Object.values(allUserSelections).forEach((selections) => {
+    // Add up points from ALL users' rankings
+    Object.entries(allUserSelections).forEach(([, selections]) => {
       selections.forEach((selection) => {
-        const currentPoints = pointsMap.get(selection.dishId) || 0;
-        pointsMap.set(
+        const currentRankingPoints =
+          rankingPointsMap.get(selection.dishId) || 0;
+        const additionalPoints = calculatePoints(selection.rank);
+        rankingPointsMap.set(
           selection.dishId,
-          currentPoints + calculatePoints(selection.rank)
+          currentRankingPoints + additionalPoints
         );
       });
     });
 
-    // Generate results with current user's ranking
+    // Generate results with total points (base + ranking points)
     const results = dishes.map((dish) => {
       const selection = currentUser
         ? userSelections.find((s) => s.dishId === dish.id)
         : null;
 
+      const basePoints = dish.Points || 0;
+      const rankingPoints = rankingPointsMap.get(dish.id) || 0;
+      const totalPoints = basePoints + rankingPoints;
+
       return {
         ...dish,
         userRank: selection ? selection.rank : null,
         userPoints: selection ? calculatePoints(selection.rank) : 0,
-        points: pointsMap.get(dish.id) || 0, // Total points (base + ranked)
+        points: totalPoints, // Base points + all users' ranking points
+        basePoints: basePoints, // Original dish points
+        rankingPoints: rankingPoints, // Points from all user rankings
       };
     });
 
-    // Sort by total points (descending)
-    return results.sort((a, b) => b.points - a.points);
+    // Sort by total points (descending), then by dish name for consistency
+    return results.sort((a, b) => {
+      if (b.points !== a.points) {
+        return b.points - a.points;
+      }
+      return a.dishName.localeCompare(b.dishName);
+    });
   };
 
   // Get paginated dishes
@@ -200,7 +244,7 @@ export const DishProvider: FC<DishProviderProps> = ({ children }) => {
     return allUserSelections;
   };
 
-  // Update user selections (for admin)
+  // Update user selections (for admin use)
   const updateUserSelections = (
     userId: number,
     selections: UserSelection[]
@@ -222,6 +266,8 @@ export const DishProvider: FC<DishProviderProps> = ({ children }) => {
     if (currentUser && currentUser.id === userId) {
       setUserSelections(selections);
     }
+
+    console.log("Admin updated selections for user", userId, ":", selections);
   };
 
   const totalPages = Math.ceil(dishes.length / itemsPerPage);
