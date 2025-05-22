@@ -1,5 +1,13 @@
-import React, { useContext } from "react";
-import { Box, Typography, CardContent, CardMedia } from "@mui/material";
+import React, { useContext, useState, useEffect, useCallback } from "react";
+import {
+  Box,
+  Typography,
+  CardContent,
+  CardMedia,
+  TextField,
+  InputAdornment,
+} from "@mui/material";
+import SearchIcon from "@mui/icons-material/Search";
 import { DishContext } from "../../context/DishContext";
 import Pagination from "../../UI/Pagination";
 import { motion } from "framer-motion";
@@ -14,16 +22,59 @@ import {
 
 const VotingTab: React.FC = () => {
   const {
-    getPaginatedDishes,
+    dishes,
     userSelections,
     updateSelection,
     clearSelections,
     page,
     setPage,
-    totalPages,
   } = useContext(DishContext);
 
-  const dishes = getPaginatedDishes();
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [filteredDishes, setFilteredDishes] = useState(dishes);
+
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 500); // 500ms delay
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Filter dishes based on debounced query
+  useEffect(() => {
+    if (!dishes) return;
+
+    if (!debouncedQuery) {
+      setFilteredDishes(dishes);
+      return;
+    }
+
+    const filtered = dishes.filter(
+      (dish) =>
+        dish.dishName.toLowerCase().includes(debouncedQuery.toLowerCase()) ||
+        dish.description.toLowerCase().includes(debouncedQuery.toLowerCase())
+    );
+
+    setFilteredDishes(filtered);
+    // Reset to first page when search changes
+    setPage(1);
+  }, [debouncedQuery, dishes, setPage]);
+
+  // Get paginated dishes from filtered results
+  const getPaginatedDishes = useCallback(() => {
+    const startIndex = (page - 1) * 6; // Using 6 as itemsPerPage from DishContext
+    const endIndex = startIndex + 6;
+    return filteredDishes.slice(startIndex, endIndex);
+  }, [filteredDishes, page]);
+
+  const paginatedDishes = getPaginatedDishes();
+
+  // Calculate total pages based on filtered dishes
+  const calculatedTotalPages = Math.ceil(filteredDishes.length / 6);
 
   const getDishRank = (dishId: number): number | null => {
     const selection = userSelections.find(
@@ -99,11 +150,48 @@ const VotingTab: React.FC = () => {
         </Box>
       </Box>
 
+      {/* Search input */}
+      <Box sx={{ mb: { xs: 3, sm: 4 } }}>
+        <TextField
+          fullWidth
+          variant="outlined"
+          placeholder="Search dishes by name or description..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon />
+              </InputAdornment>
+            ),
+          }}
+          sx={{
+            "& .MuiOutlinedInput-root": {
+              borderRadius: "8px",
+              "&.Mui-focused fieldset": {
+                borderColor: "primary.main",
+              },
+            },
+          }}
+        />
+      </Box>
+
       {rankedDishesCount === 3 && (
         <StyledAlert severity="success" sx={{ mb: { xs: 3, sm: 4 } }}>
           Thank you for voting! You've selected your top 3 dishes. You can
           change your selections at any time.
         </StyledAlert>
+      )}
+
+      {paginatedDishes.length === 0 && debouncedQuery && (
+        <Box sx={{ textAlign: "center", py: 4 }}>
+          <Typography variant="h6" color="text.secondary">
+            No dishes found matching "{debouncedQuery}"
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Try a different search term or clear the search
+          </Typography>
+        </Box>
       )}
 
       <Box
@@ -117,7 +205,7 @@ const VotingTab: React.FC = () => {
           gap: { xs: 2, sm: 3 },
         }}
       >
-        {dishes.map((dish) => (
+        {paginatedDishes.map((dish) => (
           <motion.div
             key={dish.id}
             initial={{ opacity: 0, y: 20 }}
@@ -219,7 +307,7 @@ const VotingTab: React.FC = () => {
         ))}
       </Box>
 
-      {totalPages > 1 && (
+      {calculatedTotalPages > 1 && (
         <Box
           sx={{
             display: "flex",
@@ -229,7 +317,7 @@ const VotingTab: React.FC = () => {
         >
           <Pagination
             currentPage={page}
-            totalPages={totalPages}
+            totalPages={calculatedTotalPages}
             onChange={(value) => setPage(value)}
           />
         </Box>

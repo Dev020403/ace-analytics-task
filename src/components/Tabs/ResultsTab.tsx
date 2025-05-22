@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React, { useContext, useMemo } from "react";
 import {
   Box,
   Typography,
@@ -20,10 +20,13 @@ import {
 } from "./ResultsTabStyles";
 
 const ResultsTab: React.FC = () => {
-  const { calculateResults } = useContext(DishContext);
+  const { calculateResults, userSelections } = useContext(DishContext);
   const { currentUser } = useContext(AuthContext);
 
-  const rankedDishes = calculateResults();
+  // Use useMemo to recalculate when selections change
+  const rankedDishes = useMemo(() => {
+    return calculateResults();
+  }, [calculateResults, userSelections]);
 
   return (
     <Box sx={{ px: { xs: 2, sm: 4 }, py: 5, maxWidth: "1400px", mx: "auto" }}>
@@ -92,7 +95,7 @@ const ResultsTab: React.FC = () => {
                       fontFamily: '"Inter", sans-serif',
                     }}
                   >
-                    {dish.Points}
+                    {dish.points}
                   </Typography>
                 </TableCell>
 
