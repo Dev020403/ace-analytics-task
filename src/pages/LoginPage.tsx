@@ -9,8 +9,7 @@ const LoginPage: FC = () => {
         minHeight: "100vh",
         width: "100vw",
         display: "flex",
-        flexDirection: "column",
-        background: "linear-gradient(135deg, #0288D1 0%, #26C6DA 100%)",
+        flexDirection: "column"
       }}
     >
       <Container

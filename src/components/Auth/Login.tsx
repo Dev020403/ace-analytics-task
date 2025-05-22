@@ -12,18 +12,25 @@ import {
   Zoom,
   CssBaseline,
   styled,
+  useTheme as useMuiTheme,
+  CircularProgress,
 } from "@mui/material";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import { useAuth } from "../../hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useTheme } from "../../context/ThemeContext";
 
-const GradientBackground = styled(Box)({
+const GradientBackground = styled(Box)(({ theme }) => ({
   minHeight: "100vh",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-});
+  background: theme.palette.mode === "light"
+    ? "linear-gradient(135deg, #f5f7fa 0%, #e4e8eb 100%)"
+    : "linear-gradient(135deg, #1e1e1e 0%, #121212 100%)",
+  transition: "background 0.3s ease",
+}));
 
 const AnimatedPaper = motion(Paper);
 
@@ -34,6 +41,8 @@ const Login: FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const { mode } = useTheme(); // Get current theme mode
+  const muiTheme = useMuiTheme(); // Get the MUI theme object
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -74,8 +83,16 @@ const Login: FC = () => {
               flexDirection: "column",
               alignItems: "center",
               borderRadius: 3,
-              background: "rgba(255, 255, 255, 0.95)",
+              background: mode === "light"
+                ? "rgba(255, 255, 255, 0.95)"
+                : "rgba(30, 30, 30, 0.85)",
               backdropFilter: "blur(10px)",
+              boxShadow: mode === "light"
+                ? "0 8px 32px rgba(0, 0, 0, 0.1)"
+                : "0 8px 32px rgba(0, 0, 0, 0.3)",
+              border: mode === "light"
+                ? "1px solid rgba(255, 255, 255, 0.2)"
+                : "1px solid rgba(255, 255, 255, 0.05)",
             }}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -107,7 +124,11 @@ const Login: FC = () => {
             >
               Welcome Back
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            <Typography 
+              variant="body2" 
+              color="text.secondary" 
+              sx={{ mt: 1 }}
+            >
               Sign in to continue to Dish Ranking
             </Typography>
 
@@ -115,7 +136,14 @@ const Login: FC = () => {
               <Fade in={!!error}>
                 <Alert
                   severity="error"
-                  sx={{ width: "100%", mt: 3, borderRadius: 2 }}
+                  sx={{ 
+                    width: "100%", 
+                    mt: 3, 
+                    borderRadius: 2,
+                    backgroundColor: mode === "light" 
+                      ? "rgba(253, 237, 237, 0.95)" 
+                      : "rgba(95, 33, 32, 0.9)",
+                  }}
                 >
                   {error}
                 </Alert>
@@ -142,11 +170,19 @@ const Login: FC = () => {
                   "& .MuiOutlinedInput-root": {
                     borderRadius: 2,
                     "& fieldset": {
-                      borderColor: "rgba(0, 0, 0, 0.1)",
+                      borderColor: mode === "light" 
+                        ? "rgba(0, 0, 0, 0.1)" 
+                        : "rgba(255, 255, 255, 0.15)",
                     },
                     "&:hover fieldset": {
                       borderColor: "primary.main",
                     },
+                  },
+                  "& .MuiInputLabel-root": {
+                    color: muiTheme.palette.text.secondary,
+                  },
+                  "& .MuiInputBase-input": {
+                    color: muiTheme.palette.text.primary,
                   },
                 }}
               />
@@ -165,11 +201,19 @@ const Login: FC = () => {
                   "& .MuiOutlinedInput-root": {
                     borderRadius: 2,
                     "& fieldset": {
-                      borderColor: "rgba(0, 0, 0, 0.1)",
+                      borderColor: mode === "light" 
+                        ? "rgba(0, 0, 0, 0.1)" 
+                        : "rgba(255, 255, 255, 0.15)",
                     },
                     "&:hover fieldset": {
                       borderColor: "primary.main",
                     },
+                  },
+                  "& .MuiInputLabel-root": {
+                    color: muiTheme.palette.text.secondary,
+                  },
+                  "& .MuiInputBase-input": {
+                    color: muiTheme.palette.text.primary,
                   },
                 }}
               />
@@ -185,13 +229,20 @@ const Login: FC = () => {
                   borderRadius: 2,
                   fontWeight: 600,
                   background: "linear-gradient(135deg, #0288D1 0%, #26C6DA 100%)",
-
                   "&:hover": {
                     background: "linear-gradient(135deg, #0278D1 0%, #26C6DA 100%)"
                   },
+                  "&.Mui-disabled": {
+                    background: mode === "light"
+                      ? "rgba(0, 0, 0, 0.12)"
+                      : "rgba(255, 255, 255, 0.12)",
+                    color: mode === "light"
+                      ? "rgba(0, 0, 0, 0.26)"
+                      : "rgba(255, 255, 255, 0.3)",
+                  },
                 }}
               >
-                {isSubmitting ? "Signing In..." : "Sign In"}
+                {isSubmitting ? <CircularProgress></CircularProgress> : "Sign In"}
               </Button>
 
               <Typography
