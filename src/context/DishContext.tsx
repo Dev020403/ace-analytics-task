@@ -9,7 +9,7 @@ import {
   type RankedDish,
 } from "../types";
 
-// Create context with default values
+// ---- Context Default ---- //
 export const DishContext = createContext<DishContextType>({
   dishes: [],
   loading: true,
@@ -26,40 +26,60 @@ export const DishContext = createContext<DishContextType>({
   updateUserSelections: () => {},
 });
 
+// ---- Component ---- //
 export const DishProvider: FC<DishProviderProps> = ({ children }) => {
   const { currentUser } = useContext(AuthContext);
+
+  // ---- State ---- //
   const [dishes, setDishes] = useState<Dish[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userSelections, setUserSelections] = useState<UserSelection[]>([]);
-  const [page, setPage] = useState<number>(1);
-  const [itemsPerPage] = useState<number>(6);
   const [allUserSelections, setAllUserSelections] = useState<
     Record<number, UserSelection[]>
   >({});
+  const [page, setPage] = useState(1);
+  const [itemsPerPage] = useState(6);
 
-  // Load all user selections from localStorage
+  const totalPages = Math.ceil(dishes.length / itemsPerPage);
+
+  // ---- Helpers ---- //
+
+  const calculatePoints = (rank: number): number => {
+    return rank === 1 ? 30 : rank === 2 ? 20 : rank === 3 ? 10 : 0;
+  };
+
   const loadAllUserSelections = (): Record<number, UserSelection[]> => {
-    const allSelections: Record<number, UserSelection[]> = {};
+    const selections: Record<number, UserSelection[]> = {};
 
-    // Scan localStorage for all user selections
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && key.startsWith("userSelections-")) {
+      if (key?.startsWith("userSelections-")) {
         try {
           const userId = parseInt(key.split("-")[1]);
-          const selections = JSON.parse(localStorage.getItem(key) || "[]");
-          if (Array.isArray(selections)) {
-            allSelections[userId] = selections;
-          }
-        } catch (error) {
-          console.error(`Error parsing selections for key ${key}:`, error);
+          const parsed = JSON.parse(localStorage.getItem(key) || "[]");
+          if (Array.isArray(parsed)) selections[userId] = parsed;
+        } catch (err) {
+          console.error(`Failed to parse ${key}:`, err);
         }
       }
     }
 
-    return allSelections;
+    return selections;
   };
+
+  const getUserSelectionsFromStorage = (userId: number): UserSelection[] => {
+    try {
+      const stored = localStorage.getItem(`userSelections-${userId}`);
+      const parsed = stored ? JSON.parse(stored) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      console.error("Error loading user selections:", err);
+      return [];
+    }
+  };
+
+  // ---- Effects ---- //
 
   useEffect(() => {
     const loadDishes = async () => {
@@ -68,28 +88,11 @@ export const DishProvider: FC<DishProviderProps> = ({ children }) => {
         const dishData = await fetchDishes();
         setDishes(dishData);
 
-        // Load all user selections from localStorage
         const allSelections = loadAllUserSelections();
         setAllUserSelections(allSelections);
 
-        // Retrieve current user's selections if logged in
         if (currentUser) {
-          const savedSelections = localStorage.getItem(
-            `userSelections-${currentUser.id}`
-          );
-          if (savedSelections) {
-            try {
-              const parsedSelections = JSON.parse(savedSelections);
-              setUserSelections(
-                Array.isArray(parsedSelections) ? parsedSelections : []
-              );
-            } catch (error) {
-              console.error("Error parsing current user selections:", error);
-              setUserSelections([]);
-            }
-          } else {
-            setUserSelections([]);
-          }
+          setUserSelections(getUserSelectionsFromStorage(currentUser.id));
         } else {
           setUserSelections([]);
         }
@@ -104,173 +107,95 @@ export const DishProvider: FC<DishProviderProps> = ({ children }) => {
     loadDishes();
   }, [currentUser]);
 
-  const calculatePoints = (rank: number): number => {
-    switch (rank) {
-      case 1:
-        return 30;
-      case 2:
-        return 20;
-      case 3:
-        return 10;
-      default:
-        return 0;
-    }
-  };
+  // ---- Ranking Logic ---- //
 
   const updateSelection = (dishId: number, rank: number): void => {
     if (!currentUser) return;
 
-    // Get current user's selections
-    const currentSelections = [...userSelections];
+    const updated = userSelections
+      .filter((sel) => sel.dishId !== dishId && sel.rank !== rank)
+      .concat({ dishId, rank });
 
-    // Remove any existing selection for this dish
-    let updatedSelections = currentSelections.filter(
-      (selection) => selection.dishId !== dishId
-    );
+    setUserSelections(updated);
 
-    // Remove any existing selection for this rank
-    updatedSelections = updatedSelections.filter(
-      (selection) => selection.rank !== rank
-    );
+    const updatedAll = { ...allUserSelections, [currentUser.id]: updated };
+    setAllUserSelections(updatedAll);
 
-    // Add the new selection
-    updatedSelections.push({ dishId, rank });
-
-    // Update current user's selections
-    setUserSelections(updatedSelections);
-
-    // Update all selections state immediately
-    const newAllSelections = {
-      ...allUserSelections,
-      [currentUser.id]: updatedSelections,
-    };
-    setAllUserSelections(newAllSelections);
-
-    // Save to localStorage
     localStorage.setItem(
       `userSelections-${currentUser.id}`,
-      JSON.stringify(updatedSelections)
+      JSON.stringify(updated)
     );
-
-    // Debug log to verify the update
-    console.log(
-      "Updated selections for user",
-      currentUser.id,
-      ":",
-      updatedSelections
-    );
-    console.log("All user selections:", newAllSelections);
   };
 
   const clearSelections = (): void => {
     if (!currentUser) return;
 
-    // Clear current user's selections
     setUserSelections([]);
-
-    // Update all selections state by removing current user's selections
-    const newAllSelections = { ...allUserSelections };
-    delete newAllSelections[currentUser.id];
-    setAllUserSelections(newAllSelections);
-
-    // Remove from localStorage
+    const updatedAll = { ...allUserSelections };
+    delete updatedAll[currentUser.id];
+    setAllUserSelections(updatedAll);
     localStorage.removeItem(`userSelections-${currentUser.id}`);
-
-    console.log("Cleared selections for user", currentUser.id);
-    console.log("Remaining selections:", newAllSelections);
   };
 
-  // Calculate results with points based on rankings from ALL users
   const calculateResults = (): RankedDish[] => {
-    // Calculate total ranking points for each dish from all users
     const rankingPointsMap = new Map<number, number>();
 
-    // Initialize with 0 ranking points
-    dishes.forEach((dish) => {
-      rankingPointsMap.set(dish.id, 0);
-    });
+    dishes.forEach((dish) => rankingPointsMap.set(dish.id, 0));
 
-    // Add up points from ALL users' rankings
-    Object.entries(allUserSelections).forEach(([, selections]) => {
-      selections.forEach((selection) => {
-        const currentRankingPoints =
-          rankingPointsMap.get(selection.dishId) || 0;
-        const additionalPoints = calculatePoints(selection.rank);
-        rankingPointsMap.set(
-          selection.dishId,
-          currentRankingPoints + additionalPoints
-        );
+    Object.values(allUserSelections).forEach((selections) => {
+      selections.forEach(({ dishId, rank }) => {
+        const prev = rankingPointsMap.get(dishId) || 0;
+        rankingPointsMap.set(dishId, prev + calculatePoints(rank));
       });
     });
 
-    // Generate results with total points (base + ranking points)
-    const results = dishes.map((dish) => {
-      const selection = currentUser
-        ? userSelections.find((s) => s.dishId === dish.id)
-        : null;
+    return dishes
+      .map((dish) => {
+        const selection = userSelections.find((s) => s.dishId === dish.id);
+        const basePoints = dish.Points || 0;
+        const rankingPoints = rankingPointsMap.get(dish.id) || 0;
 
-      const basePoints = dish.Points || 0;
-      const rankingPoints = rankingPointsMap.get(dish.id) || 0;
-      const totalPoints = basePoints + rankingPoints;
-
-      return {
-        ...dish,
-        userRank: selection ? selection.rank : null,
-        userPoints: selection ? calculatePoints(selection.rank) : 0,
-        points: totalPoints, // Base points + all users' ranking points
-        basePoints: basePoints, // Original dish points
-        rankingPoints: rankingPoints, // Points from all user rankings
-      };
-    });
-
-    // Sort by total points (descending), then by dish name for consistency
-    return results.sort((a, b) => {
-      if (b.points !== a.points) {
-        return b.points - a.points;
-      }
-      return a.dishName.localeCompare(b.dishName);
-    });
+        return {
+          ...dish,
+          userRank: selection?.rank || null,
+          userPoints: selection ? calculatePoints(selection.rank) : 0,
+          points: basePoints + rankingPoints,
+          basePoints,
+          rankingPoints,
+        };
+      })
+      .sort(
+        (a, b) => b.points - a.points || a.dishName.localeCompare(b.dishName)
+      );
   };
 
-  // Get paginated dishes
+  // ---- Pagination ---- //
+
   const getPaginatedDishes = (): Dish[] => {
-    const startIndex = (page - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return dishes.slice(startIndex, endIndex);
+    const start = (page - 1) * itemsPerPage;
+    return dishes.slice(start, start + itemsPerPage);
   };
 
-  // Get all user selections for admin
-  const getAllUserSelections = (): Record<number, UserSelection[]> => {
-    return allUserSelections;
-  };
+  // ---- Admin ---- //
 
-  // Update user selections (for admin use)
+  const getAllUserSelections = (): Record<number, UserSelection[]> =>
+    allUserSelections;
+
   const updateUserSelections = (
     userId: number,
     selections: UserSelection[]
   ): void => {
-    // Update in state
-    const newAllSelections = {
-      ...allUserSelections,
-      [userId]: selections,
-    };
-    setAllUserSelections(newAllSelections);
-
-    // Update in localStorage
+    const updatedAll = { ...allUserSelections, [userId]: selections };
+    setAllUserSelections(updatedAll);
     localStorage.setItem(
       `userSelections-${userId}`,
       JSON.stringify(selections)
     );
 
-    // If this is the current user, update userSelections state
-    if (currentUser && currentUser.id === userId) {
-      setUserSelections(selections);
-    }
-
-    console.log("Admin updated selections for user", userId, ":", selections);
+    if (currentUser?.id === userId) setUserSelections(selections);
   };
 
-  const totalPages = Math.ceil(dishes.length / itemsPerPage);
+  // ---- Provider Value ---- //
 
   const value: DishContextType = {
     dishes,
